@@ -45,11 +45,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Include API routers
+# Include API routers (both /api prefix and un-prefixed for serverless resilience)
 app.include_router(health.router, prefix="/api", tags=["Health"])
+app.include_router(health.router, tags=["Health Alias"])
+
 app.include_router(capabilities.router, prefix="/api", tags=["Capabilities"])
+app.include_router(capabilities.router, tags=["Capabilities Alias"])
+
 app.include_router(analyze.router, prefix="/api", tags=["Analysis"])
+app.include_router(analyze.router, tags=["Analysis Alias"])
+
 app.include_router(history.router, prefix="/api", tags=["History"])
+app.include_router(history.router, tags=["History Alias"])
 
 
 @app.get("/")

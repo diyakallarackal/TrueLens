@@ -15,6 +15,7 @@ MAX_VIDEO_SIZE = 100 * 1024 * 1024  # 100MB
 
 
 @router.post("/analyze")
+@router.post("/analyze/image")
 async def analyze_image(file: UploadFile = File(...)):
     """
     Accepts an uploaded image file (JPEG, PNG, WebP, TIFF, BMP up to 25MB),
