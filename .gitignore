@@ -1,0 +1,56 @@
+# Secrets and Environment Variables
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.secret
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+.nox/
+.tox/
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+backend/app/truelens.db
+
+# Node & Frontend Build Artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.vite/
+.output/
+.nuxt/
+build/
+
+# Temporary Files, Logs & Uploads
+*.log
+*.tmp
+temp/
+tmp/
+uploads/
+
+# OS and Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
