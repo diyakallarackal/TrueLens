@@ -3,7 +3,17 @@ import json
 import os
 from typing import List, Optional, Dict, Any
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "truelens.db")
+if os.getenv("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+    DB_PATH = "/tmp/truelens.db"
+else:
+    try:
+        test_file = os.path.join(os.path.dirname(__file__), ".write_test")
+        with open(test_file, "w") as f:
+            f.write("1")
+        os.remove(test_file)
+        DB_PATH = os.path.join(os.path.dirname(__file__), "truelens.db")
+    except Exception:
+        DB_PATH = "/tmp/truelens.db"
 
 
 def get_db_connection():
