@@ -188,9 +188,12 @@ All endpoints return JSON responses.
 
 ```text
 TrueLens/
+├── .env.example                    # Environment variable template
 ├── .gitignore                      # Git exclusion rules
 ├── README.md                       # Platform documentation
 ├── backend/                        # FastAPI Python backend
+│   ├── README.md                   # Backend documentation
+│   ├── requirements.txt            # Python dependencies
 │   ├── app/
 │   │   ├── api/                    # API route handlers
 │   │   │   ├── analyze.py          # Upload endpoints for image, audio, video
@@ -226,6 +229,7 @@ TrueLens/
 │       ├── test_provenance_api.py  # Provenance & C2PA tests
 │       └── test_video_api.py       # Video API tests
 └── frontend/                       # React + Vite frontend
+    ├── README.md                   # Frontend documentation
     ├── public/                     # Static assets & icons
     ├── src/
     │   ├── App.css                 # Custom layout styles
@@ -274,7 +278,7 @@ Navigate to the `backend` directory, install dependencies, and launch Uvicorn:
 
 ```bash
 cd backend
-python -m pip install fastapi uvicorn pydantic pillow numpy scipy opencv-python pytest httpx
+pip install -r requirements.txt
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 - The API will start at `http://127.0.0.1:8000`.

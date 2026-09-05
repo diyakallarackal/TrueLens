@@ -1,6 +1,7 @@
 # Secrets and Environment Variables
 .env
 .env.*
+!.env.example
 *.env
 *.pem
 *.key
