@@ -1,10 +1,8 @@
-# TrueLens Serverless & Monorepo Dependencies
-fastapi>=0.100.0
-uvicorn[standard]>=0.20.0
-pydantic>=2.0.0
-pillow>=10.0.0
-numpy>=1.24.0
-scipy>=1.10.0
-opencv-python-headless>=4.8.0
-pytest>=7.0.0
-httpx>=0.24.0
+# TrueLens Production Serverless Dependencies (Optimized for Vercel <500MB function size limit)
+fastapi>=0.100.0,<0.110.0
+uvicorn>=0.20.0,<0.28.0
+pydantic>=2.0.0,<2.10.0
+pillow>=10.0.0,<11.0.0
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0,<1.13.0
+opencv-python-headless>=4.8.0,<4.9.0
