@@ -1,10 +1,21 @@
 import io
 import base64
 import numpy as np
-import scipy.signal
-import scipy.io.wavfile
-import cv2
+from PIL import Image
 from typing import Dict, Any, Tuple, Optional
+
+try:
+    import scipy.signal
+    import scipy.io.wavfile
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 try:
     import soundfile as sf
@@ -59,7 +70,7 @@ def decode_audio_bytes(audio_bytes: bytes, filename: str) -> Tuple[np.ndarray, i
             sample_rate = sr
             if data.ndim > 1:
                 tech_metrics["channels"] = data.shape[1]
-                signal = np.mean(data, axis=1) # Convert to mono float for spectral analysis
+                signal = np.mean(data, axis=1) # Convert to mono float
             else:
                 tech_metrics["channels"] = 1
                 signal = data
@@ -71,38 +82,49 @@ def decode_audio_bytes(audio_bytes: bytes, filename: str) -> Tuple[np.ndarray, i
             pass
 
     # Fallback 1: Scipy wavfile reader
-    try:
-        sr, data = scipy.io.wavfile.read(io.BytesIO(audio_bytes))
-        sample_rate = sr
-        if data.ndim > 1:
-            tech_metrics["channels"] = data.shape[1]
-            signal = np.mean(data, axis=1)
-        else:
-            tech_metrics["channels"] = 1
-            signal = data
-            
-        # Normalize int data to float [-1.0, 1.0]
-        if np.issubdtype(signal.dtype, np.integer):
-            max_val = np.iinfo(signal.dtype).max
-            signal = signal.astype(np.float32) / (max_val if max_val > 0 else 1.0)
-        else:
-            signal = signal.astype(np.float32)
-            
-        duration = float(len(signal) / sample_rate)
-        tech_metrics["sample_rate"] = sample_rate
-        tech_metrics["duration_seconds"] = round(duration, 2)
-        return signal, sample_rate, duration, tech_metrics
-    except Exception:
-        pass
-
-    # Fallback 2: Direct raw PCM float interpret if valid length
-    if len(audio_bytes) > 44:
-        raw_pcm = np.frombuffer(audio_bytes[44:], dtype=np.int16)
-        if len(raw_pcm) > 1000:
-            signal = raw_pcm.astype(np.float32) / 32768.0
-            duration = float(len(signal) / 44100)
+    if SCIPY_AVAILABLE:
+        try:
+            sr, data = scipy.io.wavfile.read(io.BytesIO(audio_bytes))
+            sample_rate = sr
+            if data.ndim > 1:
+                tech_metrics["channels"] = data.shape[1]
+                signal = np.mean(data, axis=1)
+            else:
+                tech_metrics["channels"] = 1
+                signal = data
+                
+            if np.issubdtype(signal.dtype, np.integer):
+                max_val = np.iinfo(signal.dtype).max
+                signal = signal.astype(np.float32) / (max_val if max_val > 0 else 1.0)
+            else:
+                signal = signal.astype(np.float32)
+                
+            duration = float(len(signal) / sample_rate)
+            tech_metrics["sample_rate"] = sample_rate
             tech_metrics["duration_seconds"] = round(duration, 2)
-            return signal, 44100, duration, tech_metrics
+            return signal, sample_rate, duration, tech_metrics
+        except Exception:
+            pass
+
+    # Fallback 2: Direct raw PCM float interpret (WAV binary header)
+    if len(audio_bytes) > 44:
+        try:
+            # Check for 'WAVE' chunk in header
+            if b"WAVE" in audio_bytes[:16]:
+                # Read sample rate from WAV header (offset 24)
+                sr_header = int.from_bytes(audio_bytes[24:28], byteorder="little")
+                if sr_header > 0:
+                    sample_rate = sr_header
+            
+            raw_pcm = np.frombuffer(audio_bytes[44:], dtype=np.int16)
+            if len(raw_pcm) > 100:
+                signal = raw_pcm.astype(np.float32) / 32768.0
+                duration = float(len(signal) / sample_rate)
+                tech_metrics["sample_rate"] = sample_rate
+                tech_metrics["duration_seconds"] = round(duration, 2)
+                return signal, sample_rate, duration, tech_metrics
+        except Exception:
+            pass
 
     raise ValueError("Unsupported or corrupted audio format. Could not decode audio stream.")
 
@@ -110,7 +132,7 @@ def decode_audio_bytes(audio_bytes: bytes, filename: str) -> Tuple[np.ndarray, i
 def compute_spectral_features(signal: np.ndarray, sample_rate: int) -> Dict[str, Any]:
     """
     Computes spectral centroid, spectral bandwidth, spectral rolloff, 
-    spectral flatness, RMS energy, and ZCR using SciPy signal processing.
+    spectral flatness, RMS energy, and ZCR using SciPy or NumPy fallback.
     """
     if len(signal) == 0:
         raise ValueError("Audio signal contains no samples.")
@@ -123,8 +145,28 @@ def compute_spectral_features(signal: np.ndarray, sample_rate: int) -> Dict[str,
 
     # 2. Short-Time Fourier Transform (STFT)
     nperseg = min(1024, max(256, len(signal) // 4))
-    f, t, Zxx = scipy.signal.stft(signal, fs=sample_rate, nperseg=nperseg)
-    mag = np.abs(Zxx) # Shape: (freq_bins, time_frames)
+
+    if SCIPY_AVAILABLE:
+        f, t, Zxx = scipy.signal.stft(signal, fs=sample_rate, nperseg=nperseg)
+        mag = np.abs(Zxx)
+    else:
+        # Pure NumPy STFT implementation
+        hop = nperseg // 2
+        window = np.hanning(nperseg)
+        n_frames = max(1, (len(signal) - nperseg) // hop + 1)
+        
+        # Pad signal if too short
+        pad_len = max(0, (n_frames - 1) * hop + nperseg - len(signal))
+        padded_signal = np.pad(signal, (0, pad_len))
+        
+        frames = np.lib.stride_tricks.as_strided(
+            padded_signal,
+            shape=(n_frames, nperseg),
+            strides=(padded_signal.strides[0] * hop, padded_signal.strides[0])
+        ) * window
+        
+        mag = np.abs(np.fft.rfft(frames, axis=1)).T
+        f = np.fft.rfftfreq(nperseg, 1.0 / sample_rate)
 
     # Frame-wise spectral centroid
     mag_sum = np.sum(mag, axis=0) + 1e-10
@@ -162,14 +204,26 @@ def compute_spectral_features(signal: np.ndarray, sample_rate: int) -> Dict[str,
     min_db, max_db = np.min(log_mag_db), np.max(log_mag_db)
     norm_db = (log_mag_db - min_db) / ((max_db - min_db) + 1e-6)
     spec_img = (norm_db * 255).astype(np.uint8)
-    
-    # Flip vertically so low frequencies are at bottom, then apply VIRIDIS colormap
     spec_img_flipped = np.flipud(spec_img)
-    spec_img_resized = cv2.resize(spec_img_flipped, (600, 240), interpolation=cv2.INTER_CUBIC)
-    colormap_img = cv2.applyColorMap(spec_img_resized, cv2.COLORMAP_VIRIDIS)
-    
-    _, png_buf = cv2.imencode(".png", colormap_img)
-    spectrogram_base64 = "data:image/png;base64," + base64.b64encode(png_buf).decode("utf-8")
+
+    if CV2_AVAILABLE:
+        spec_img_resized = cv2.resize(spec_img_flipped, (600, 240), interpolation=cv2.INTER_CUBIC)
+        colormap_img = cv2.applyColorMap(spec_img_resized, cv2.COLORMAP_VIRIDIS)
+        _, png_buf = cv2.imencode(".png", colormap_img)
+        spectrogram_base64 = "data:image/png;base64," + base64.b64encode(png_buf).decode("utf-8")
+    else:
+        # Pure Pillow Spectrogram Heatmap Rendering
+        pil_spec = Image.fromarray(spec_img_flipped).resize((600, 240), Image.Resampling.BILINEAR)
+        # Apply Viridis-style RGB gradient LUT
+        spec_arr = np.array(pil_spec, dtype=np.float32) / 255.0
+        r = np.clip(1.5 * spec_arr - 0.2, 0, 1)
+        g = np.clip(2.0 * spec_arr * (1.0 - spec_arr) * 2.0, 0, 1)
+        b = np.clip(1.2 * (1.0 - spec_arr), 0, 1)
+        rgb_spec = (np.stack([r, g, b], axis=-1) * 255).astype(np.uint8)
+        
+        buf = io.BytesIO()
+        Image.fromarray(rgb_spec).save(buf, format="PNG")
+        spectrogram_base64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
 
     return {
         "rms_energy": round(rms_energy, 4),
